@@ -501,7 +501,8 @@ svg {
 }
 .dialog {
   width: min(560px, calc(100% - 40px));
-  max-height: calc(100% - 40px);
+  /* 用視窗高度：外層 grid 的列會跟著內容長高，百分比限制不住（設定太長時下面會被切掉、捲不到） */
+  max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -536,7 +537,18 @@ svg {
 .dlg-body {
   padding: 16px;
   overflow: auto;
+  /* flex 子項目預設不會縮得比內容小，要設 0 才會出現捲軸 */
+  min-height: 0;
   user-select: text;
+}
+/* 對話框最下面的按鈕列：內容捲動時固定在底部 */
+.dlg-foot {
+  position: sticky;
+  bottom: -16px;
+  margin: 0 -16px -16px;
+  padding: 10px 16px 14px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
 }
 .form {
   display: grid;

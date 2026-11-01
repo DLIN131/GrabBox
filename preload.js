@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('gb', {
       return ipcRenderer.invoke('update:prepare').finally(() => ipcRenderer.removeListener('update:progress', listener))
     },
     install: () => ipcRenderer.invoke('update:install'),
+    lastFailure: () => ipcRenderer.invoke('update:lastFailure'),
     onAvailable: on('update:available'),
   },
   add: {

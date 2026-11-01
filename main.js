@@ -300,12 +300,19 @@ async function checkUpdate() {
   return updateInfo ? { status: 'available', current: app.getVersion(), info: updateInfo } : { status: 'latest', current: app.getVersion() }
 }
 
-/** 背景定期檢查：有新版就告訴主視窗；視窗收在系統匣時跳通知 */
-async function autoCheck() {
+/**
+ * 自動檢查：有新版就告訴主視窗；視窗收在系統匣時跳通知。
+ * startup = 剛開啟程式：主視窗直接跳出更新視窗（之後定期檢查只在右下角提示，不打斷正在做的事）
+ */
+async function autoCheck(startup = false) {
   if (manager.getSettings().autoUpdate === false) return
   const r = await checkUpdate()
   if (r.status !== 'available') return
-  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('update:available', r.info)
+  if (mainWin && !mainWin.isDestroyed()) {
+    // 主視窗還在載入就等它載入完，不然訊息會掉
+    if (mainWin.webContents.isLoading()) await new Promise((res) => mainWin.webContents.once('did-finish-load', res))
+    mainWin.webContents.send('update:available', { ...r.info, prompt: startup })
+  }
   const visible = mainWin && !mainWin.isDestroyed() && mainWin.isVisible()
   if (!visible && notifiedVersion !== r.info.version && Notification.isSupported()) {
     notifiedVersion = r.info.version
@@ -318,10 +325,12 @@ async function autoCheck() {
 function setupUpdater() {
   // 上次更新留下的暫存（約 200 MB）。程式能啟動就代表已經裝完，清掉
   setTimeout(() => updater.cleanOld(), 3000)
-  setTimeout(autoCheck, 20 * 1000)
-  setInterval(autoCheck, 6 * 3600 * 1000)
+  // 一開啟就檢查（等主視窗出來一下）
+  setTimeout(() => autoCheck(true), 2500)
+  setInterval(() => autoCheck(false), 6 * 3600 * 1000)
   ipcMain.handle('update:check', () => checkUpdate())
   ipcMain.handle('update:notes', (_e, v) => updater.notesFor(v))
+  ipcMain.handle('update:lastFailure', () => updater.lastFailure())
   ipcMain.handle('update:prepare', async (e) => {
     if (!updateInfo) throw new Error('沒有可以更新的版本')
     await updater.prepare(updateInfo, (p) => !e.sender.isDestroyed() && e.sender.send('update:progress', p))

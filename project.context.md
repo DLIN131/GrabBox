@@ -68,11 +68,19 @@
 
 ## 自動更新（v1.0.4 起）
 
-- `lib/updater.js`（沿用 ReelBox 的做法）：主程序查 `api.github.com/repos/DLIN131/GrabBox/releases/latest`（頁面的 CSP 不能連外，所以不在頁面查）→ 下載 `GrabBox-Windows.zip` 到 `%TEMP%\GrabBox-update\<時間>` → PowerShell `Expand-Archive` 解壓 → 寫 `update.ps1`：`Wait-Process` 等程式結束 → `robocopy /E` 覆蓋安裝資料夾 → `Start-Process` 重開。log 在同一個暫存資料夾的 `update.log`。
-- 坑（都在註解裡）：一定要 `original-fs`（app.asar 會被當資料夾）；PowerShell 要用 detached 的 `cmd /c start` 開（直接 detached 沒有主控台會立刻結束、不 detached 會跟著程式被關）；路徑用環境變數傳（中文資料夾不亂碼）。
-- 啟動 20 秒後、之後每 6 小時檢查（設定可關）；主視窗右下角提示（立即更新 / 略過這個版本 / 稍後），視窗收在系統匣時跳系統通知。更新後第一次開啟顯示這版的更新內容（localStorage `lastSeenVersion`）。
+- `lib/updater.js`（沿用 ReelBox 的做法）：主程序查 `api.github.com/repos/DLIN131/GrabBox/releases/latest`（頁面的 CSP 不能連外，所以不在頁面查）→ 下載 `GrabBox-Windows.zip` 到 `%TEMP%\GrabBox-update\<時間>` → PowerShell `Expand-Archive` 解壓到**安裝資料夾裡的 `.gbupdate\files`**，解完用 zip 的清單逐一核對檔名和大小 → 寫 `update.ps1` → 程式結束後換檔 → `Start-Process` 重開。log 在 `%TEMP%\GrabBox-update\<時間>\update.log`。
+- **換檔（v1.0.7 起）**：以前用 `robocopy` 從 %TEMP%（C 槽）複製覆蓋，使用者回報更新後 GrabBox.exe 只剩 68.6 MB（正常 201 MB）、「此應用程式無法在您的電腦上執行」——200 MB 的 exe 複製到一半就被執行或複製失敗，而且 robocopy 失敗也照樣啟動。現在：
+  - 等主程序結束，再等舊版的子程序（GPU / 網路 / crashpad 也是 GrabBox.exe）最多 3 秒，還在就 `Stop-Process`：exe 本身可以邊跑邊改名，但它們開著的資料檔（實測 `v8_context_snapshot.bin`）不能改名。
+  - 每個檔案：舊檔改名 `.gbold` → 新檔從 `.gbupdate` 搬進來（同磁碟只是改名，幾秒內全部完成）。失敗重試 20 次（每次 0.5 秒）。
+  - 全部搬完核對大小；任何一步失敗就把搬過的全部還原、寫 `.gbupdate\failed.txt`、開回舊版，舊版啟動時讀到就跳「更新沒有完成」（`update:lastFailure`）。
+  - 成功就刪 `.gbold`（還被佔用的留到下次啟動 `cleanOld` 清）。
+  - 坑：啟動 3 秒後的 `cleanOld` 會清 `.gbupdate`，更新正在下載 / 解壓時（開啟時就跳更新視窗，使用者很快就按）會把解到一半的檔案刪掉一部分——實測 114 個檔只換了 97 個，所以 `preparing` 期間不清，解壓後也一定核對。
+- 坑（都在註解裡）：一定要 `original-fs`（app.asar 會被當資料夾）；PowerShell 要用 detached 的 `cmd /c start` 開（直接 detached 沒有主控台會立刻結束、不 detached 會跟著程式被關；測試腳本裡鎖檔用的 PowerShell 也一樣不能 detached）；路徑用環境變數傳（中文資料夾不亂碼）。
+- 開啟程式 2.5 秒後檢查（設定可關），有新版直接跳出更新視窗（已經有別的視窗開著就改右下角提示）；之後每 6 小時檢查一次只在右下角提示，不打斷正在做的事；視窗收在系統匣時跳系統通知。更新後第一次開啟顯示這版的更新內容（localStorage `lastSeenVersion`）。
 - 擴充跟著更新：程式更新會覆蓋 exe 旁的 `extension` 資料夾；擴充背景程式醒來時（最多 10 分鐘一次）和打開彈出視窗時 ping 程式，程式版本比 manifest 新就 `chrome.runtime.reload()`，同一個版本只試一次（`reloadedFor`），避免從別的資料夾載入時一直重載；還是舊的就在彈出視窗提示改從 GrabBox 資料夾載入。
-- 測試用環境變數：`GRABBOX_USER_DATA`（另一個資料夾、不註冊 grabbox:// 協定、不跟正在跑的 GrabBox 搶單一實例鎖）、`GRABBOX_UPDATE_API`（指到本機假的 GitHub）。實測流程：打包 A、B 兩份 → B 壓成 zip 由假 GitHub 提供 → A 用 `--hidden --remote-debugging-port` 啟動 → DevTools 協定呼叫 `gb.update.check/prepare/install` → 確認 A 的 version.txt 變成 B 的、新程序自動開起來。
+- 測試用環境變數：`GRABBOX_USER_DATA`（另一個資料夾、不註冊 grabbox:// 協定、不跟正在跑的 GrabBox 搶單一實例鎖）、`GRABBOX_UPDATE_API`（指到本機假的 GitHub）。實測流程：打包 A、B 兩份（暫時改 package.json 的 version）→ B 壓成 zip 由假 GitHub 提供 → A 用 `--hidden --remote-debugging-port` 啟動 → DevTools 協定呼叫 `gb.update.check/prepare/install` → 確認 A 的 version.txt 變成 B 的、新程序自動開起來，再逐檔 md5 跟 B 比。
+  - v1.0.7 加測：安裝前另外用 `ELECTRON_RUN_AS_NODE=1` 跑一個 A 的 GrabBox.exe 佔著 15 秒（模擬沒結束的子程序）→ 照樣 5 秒內裝好 114 個檔；另外鎖住 LICENSE（不能改名）→ 重試 20 次後全部還原，114 個檔逐一跟 A 相同、開回 A、跳出更新失敗提示。
+  - 測試腳本（driver）要用 `original-fs`，不然讀 app.asar 會失敗。
 - 本機打包時 `app.getVersion()` 來自 package.json（CI 會 `npm version`），`APP_VERSION` 只影響 exe 資訊和 version.txt。
 
 ## 發布
@@ -92,6 +100,12 @@
 - 擴充：`background.js` 放進 Node `vm` 搭配假的 chrome API 測偵測；`content.js` 放在含假 chrome 物件的測試頁，用 Electron `sendInputEvent` 模擬滑鼠截圖。
 
 ## 變更紀錄
+
+### v1.0.7（2026-11-01）
+
+- 修正更新後 GrabBox 打不開（「此應用程式無法在您的電腦上執行」）：新版改成先解壓到 GrabBox 資料夾裡、核對完整，再用改名的方式換檔，換完核對大小；任何一個檔案換不過去就全部還原成原本的版本，並提示更新沒有完成。
+- 開啟 GrabBox 時有新版本會直接跳出更新視窗，不用自己到設定裡按檢查更新。
+- 設定視窗在螢幕比較小時可以往下捲，「取消 / 儲存」固定在最下面。
 
 ### v1.0.6（2026-11-01）
 

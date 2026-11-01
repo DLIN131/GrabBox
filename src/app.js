@@ -503,7 +503,7 @@ async function settingsDialog() {
       <label class="chk"><input type="checkbox" id="sAuto" ${s.autoUpdate !== false ? 'checked' : ''} />自動檢查新版本（有新版會提示，按一下就更新並重新開啟）</label>
       <div class="inline"><button class="btn" id="sCheck">立即檢查更新</button><span class="dim small" id="sCheckSt">目前 v${esc(info.version)}</span></div>
 
-      <div class="inline" style="justify-content:space-between;margin-top:6px">
+      <div class="inline dlg-foot" style="justify-content:space-between">
         <span class="dim small">GrabBox v${esc(info.version)} · 本機服務埠 ${info.port || '啟動失敗'}</span>
         <span class="inline"><button class="btn" data-close>取消</button><button class="btn primary" id="sSave">儲存</button></span>
       </div>
@@ -676,21 +676,36 @@ function showUpdateBar(info, current, manual = false) {
   document.querySelector('.update-bar')?.remove()
   const bar = document.createElement('div')
   bar.className = 'update-bar'
-  bar.innerHTML = `
+  updatePanel(bar, info, current, () => bar.remove())
+  document.body.appendChild(bar)
+}
+
+/** 開啟程式時有新版：直接跳出更新視窗（已經有別的視窗開著就改用右下角提示） */
+function showUpdateDialog(info, current) {
+  if (ls.get('skippedVersion') === info.version) return
+  if (!$('#modal').classList.contains('hidden')) return showUpdateBar(info, current)
+  document.querySelector('.update-bar')?.remove()
+  const body = openModal('有新版本', '<div class="form"></div>', 480)
+  updatePanel(body.firstElementChild, info, current, closeModal)
+}
+
+/** 更新提示的內容和按鈕（右下角提示、開啟時的更新視窗共用）；close() 收起提示 */
+function updatePanel(el, info, current, close) {
+  el.innerHTML = `
     <div class="ub-head"><b>發現新版本 v${esc(info.version)}</b><span class="dim small">目前 v${esc(current)}</span></div>
     <div class="ub-notes">${esc(info.notes || '')}</div>
     <div class="ub-st dim small"></div>
     <div class="inline" style="justify-content:flex-end">
       <button class="btn" data-a="later">稍後</button><button class="btn" data-a="skip">略過這個版本</button><button class="btn primary" data-a="go">立即更新</button>
     </div>`
-  const st = bar.querySelector('.ub-st')
-  const btns = [...bar.querySelectorAll('button')]
-  bar.querySelector('[data-a=later]').onclick = () => bar.remove()
-  bar.querySelector('[data-a=skip]').onclick = () => {
+  const st = el.querySelector('.ub-st')
+  const btns = [...el.querySelectorAll('button')]
+  el.querySelector('[data-a=later]').onclick = close
+  el.querySelector('[data-a=skip]').onclick = () => {
     ls.set('skippedVersion', info.version)
-    bar.remove()
+    close()
   }
-  bar.querySelector('[data-a=go]').onclick = async () => {
+  el.querySelector('[data-a=go]').onclick = async () => {
     const active = [...jobs.values()].some((j) => j.status === 'running')
     if (active && !confirm('還有檔案在下載，更新後會自動從中斷的地方繼續。要現在更新嗎？')) return
     btns.forEach((b) => (b.disabled = true))
@@ -703,7 +718,6 @@ function showUpdateBar(info, current, manual = false) {
       btns.forEach((b) => (b.disabled = false))
     }
   }
-  document.body.appendChild(bar)
 }
 
 /** 更新完第一次開啟：顯示這次更新了什麼 */
@@ -715,7 +729,26 @@ async function showWhatsNew(version) {
   openModal(`已更新到 v${version}`, `<div style="white-space:pre-wrap;line-height:1.7">${esc(notes || '這一版沒有寫更新說明')}</div>`, 560)
 }
 
-gb.update.onAvailable(async (info) => showUpdateBar(info, (await gb.app.info()).version))
+gb.update.onAvailable(async (info) => {
+  const current = (await gb.app.info()).version
+  if (info.prompt) showUpdateDialog(info, current)
+  else showUpdateBar(info, current)
+})
+
+/** 上次更新換檔失敗、已經還原成原本的版本：告訴使用者（記錄檔路徑可以拿去回報） */
+async function showUpdateFailure() {
+  const f = await gb.update.lastFailure()
+  if (!f) return
+  openModal(
+    '更新沒有完成',
+    `<div class="form">
+      <div>上次更新時有檔案換不過去，已經還原成原本的版本，可以再按一次更新試試看。</div>
+      <div class="dim small">記錄檔：${esc(f.log)}</div>
+      <div class="inline" style="justify-content:flex-end"><button class="btn primary" data-close>知道了</button></div>
+    </div>`,
+    480,
+  )
+}
 
 // ───────────────────────────── 啟動 ─────────────────────────────
 
@@ -738,4 +771,5 @@ applyIcons()
   const info = await gb.app.info()
   $('#conn').textContent = (info.port ? `擴充連線埠 ${info.port}` : '本機服務啟動失敗') + ` · v${info.version}`
   showWhatsNew(info.version)
+  showUpdateFailure()
 })()
