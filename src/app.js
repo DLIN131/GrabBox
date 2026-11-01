@@ -80,8 +80,10 @@ function statusText(j) {
         return '下載中'
       }
       if (j.phase === 'merge') return '合併片段、轉成 MP4…'
-      if (j.kind === 'hls') return j.segs ? `下載中 · 片段 ${Math.round((j.progress || 0) * j.segs)}/${j.segs}` : '讀取播放清單…'
-      return j.resumable ? '下載中 · 多連線' : j.probed ? '下載中 · 單一連線（不支援續傳）' : '連線中…'
+      // 多 CDN：同時從幾台伺服器下載
+      const hosts = j.hosts > 1 ? ` · ${j.hosts} 台伺服器` : ''
+      if (j.kind === 'hls') return j.segs ? `下載中 · 片段 ${Math.round((j.progress || 0) * j.segs)}/${j.segs}${hosts}` : '讀取播放清單…'
+      return j.resumable ? '下載中 · 多連線' + hosts : j.probed ? '下載中 · 單一連線（不支援續傳）' : '連線中…'
   }
   return j.status
 }
