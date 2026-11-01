@@ -37,6 +37,18 @@
 - 進度：`--progress-template` 輸出 `GBPROG 格式|已下載|總量|估計`，影像、聲音分開累計；每次啟動 yt-dlp 會從頭回報（含續傳部分），所以 `job.done` 歸零重算、第一筆不算速度。`--print after_move:GBFILE %(filepath)s` 拿最終檔名。暫停用 `taskkill /T /F`（yt-dlp.exe 底下有子程序和 ffmpeg），續傳靠 yt-dlp 的 `.part`。
 - 主視窗貼上一般網頁網址（Content-Type 是 HTML）時也會試 yt-dlp。
 
+## 特殊網站：MissAV、肉視頻（v1.0.5 起）
+
+- **Cloudflare 擋 Node 連線**：`util.request` 先用 Node，回應是 403/503 + `server: cloudflare` + HTML 時改用 `chromiumRequest`（`electron.net.request`，Chromium 的 TLS 跟瀏覽器一樣）再試，成功的話主機記進 `chromiumHosts`（只在記憶體）之後都走 Chromium。不全部改用 Chromium：HTTP/1.1 每台主機最多 6 條連線，會拖慢多連線下載。
+  - `referrerPolicy: 'unsafe-url'` 一定要給，否則自訂的 `Referer` 標頭會讓整個請求 `ERR_BLOCKED_BY_CLIENT`（其他 policy 遇到 https → http 也會擋）。`useSessionCookies: false`，只送呼叫的人給的 Cookie。
+  - 轉址用 `redirect: 'manual'` 自己跟（換主機時拿掉 Cookie，跟 Node 那邊一樣）；回應包成 `PassThrough`（帶 `statusCode`、`headers`、`viaChromium`），太久沒資料就斷、提早 destroy 會 abort 請求，中止時一定丟錯誤（不能讓 HLS 片段被當成下載完）。
+- **MissAV**：播放器（hls.js）讀 `surrit.com/<uuid>/playlist.m3u8`（master，360p～1080p）→ `<畫質>/video.m3u8` → 片段 `videoN.jpeg`（其實是普通 TS，Content-Type 是 image/jpeg）。surrit 要 missav 的 Referer / Origin，而且擋 Node 的 TLS 指紋（curl、Node 帶什麼標頭都 403），上面的 Chromium 備援就是為了它。
+  - 擴充照常從網路請求偵測到 m3u8；但背景程式自己抓清單沒有 Referer 會 403（以前會被當成「不是播放清單」藏起來）：`fetchPlaylist` 失敗時改請發出請求那個框架（`frameId`）的 content script 用網頁的身分抓（`fetchText` 訊息，CORS 有放行）。抓不到（非 2xx）時照樣列出，只是沒有畫質、片長。
+  - 網頁本身有 Cloudflare JS 驗證，主視窗貼 missav 網頁網址解析不了（README 有寫）。
+- **肉視頻**（rouvb1.xyz，網域常換）：Shaka Player，網頁資料裡有 `ev: { d, k }`，`atob(d)` 每個字元減 k 是 JSON `{ videoUrl: '/api/hls/<id>' }`。這個網址 302 到簽名的 `index.png`（約 13 小時過期），片段也是 `C-000.png`：都是 PNG，真正的內容在自訂區塊 `roUd`，第一個位元組是旗標（bit 0 = deflate，zlib 格式，網站用 `DecompressionStream('deflate')`）。`hls.unwrapPng` 在讀清單和每個片段時拆開（不是這種格式就原樣回傳，交給 `alignTs`）。
+  - 網路請求裡認不出來（URL 沒有 m3u8、Content-Type 是 image/png），所以擴充 `SITES` 有一個 `builtin: true` 的項目，分頁是影片頁就列「肉視頻 影片」；GrabBox 端 `lib/sites.js` 的 `resolve` 讀網頁解 `ev`（解不出來就用 `/api/hls/<id>`）→ `probeHls`。任務網址存 `/api/hls/<id>`，過期後續傳會重新拿到新的簽名。
+  - 播放前有 VAST 廣告 mp4，也會被偵測成直連檔，但網頁項目排第一。
+
 ## 自動更新（v1.0.4 起）
 
 - `lib/updater.js`（沿用 ReelBox 的做法）：主程序查 `api.github.com/repos/DLIN131/GrabBox/releases/latest`（頁面的 CSP 不能連外，所以不在頁面查）→ 下載 `GrabBox-Windows.zip` 到 `%TEMP%\GrabBox-update\<時間>` → PowerShell `Expand-Archive` 解壓 → 寫 `update.ps1`：`Wait-Process` 等程式結束 → `robocopy /E` 覆蓋安裝資料夾 → `Start-Process` 重開。log 在同一個暫存資料夾的 `update.log`。
@@ -58,9 +70,15 @@
 
 - 引擎：用 Electron 執行腳本，`app.setPath('userData', 暫存)` 後直接 require `lib/manager.js`，自架 HTTP 伺服器（限速、Range、轉址、Referer 檢查）、用 ffmpeg-static 產生 HLS（TS+AES、fMP4+獨立音軌），WebTorrent 另開一個 client 做種，用帶 `x.pe=127.0.0.1:port` 的磁力連結下載。
 - 介面：require `main.js` 前把 `app.setAsDefaultProtocolClient` 換成空函式（避免改到系統協定關聯），模擬擴充 POST /add，`capturePage` 截圖。被擋住的視窗 Chromium 不重畫，截圖前要 focus。
+- 特殊網站：Electron 腳本 require `manager.js`，對真實網址 `probe`；長片只測前幾段（本機出一份只列前 N 個片段、絕對網址指回原站的播放清單），完成後用 ffmpeg `-f null -` 整個解碼確認沒有錯誤。Electron 腳本的 stdout 在這台機器不穩，結果寫進檔案再看。
 - 擴充：`background.js` 放進 Node `vm` 搭配假的 chrome API 測偵測；`content.js` 放在含假 chrome 物件的測試頁，用 Electron `sendInputEvent` 模擬滑鼠截圖。
 
 ## 變更紀錄
+
+### v1.0.5（2026-11-01）
+
+- 支援 MissAV：影片伺服器會擋非瀏覽器的連線，被 Cloudflare 擋時自動改用內建的 Chromium 連線；擴充讀不到播放清單時改從網頁裡讀，會正確顯示最高畫質和片長。
+- 支援肉視頻：影片頁上的按鈕會出現「肉視頻 影片」，也可以在主視窗直接貼影片網頁網址；自動解開網頁裡編碼過的播放清單和包在 PNG 裡的影片片段。
 
 ### v1.0.4（2026-11-01）
 

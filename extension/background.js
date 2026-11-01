@@ -34,9 +34,10 @@ chrome.storage.onChanged.addListener((ch, area) => {
 
 // ───────────────────────────── 偵測 ─────────────────────────────
 
-// 這些網站的影片是分段 / 加簽名的串流，網路請求裡抓不到完整檔案：直接把「網頁網址」交給 GrabBox（yt-dlp）。
-// 清單跟 lib/ytdlp.js 的 SITES 一致
+// 這些網站的影片是分段 / 加簽名的串流，網路請求裡抓不到完整檔案：直接把「網頁網址」交給 GrabBox。
+// 一般的交給 yt-dlp（清單跟 lib/ytdlp.js 的 SITES 一致）；builtin 的由 GrabBox 自己解析（lib/sites.js）
 const SITES = [
+  { name: '肉視頻', re: /^https?:\/\/(www\.)?rou(vb\d*|video\d*)?\.[a-z]+\/v\/[a-z0-9]+/i, builtin: true },
   { name: 'YouTube', re: /^https?:\/\/((www|m|music)\.)?youtube\.com\/(watch\?|shorts\/|live\/|embed\/)|^https?:\/\/youtu\.be\//i },
   { name: 'Bilibili', re: /^https?:\/\/((www|m)\.)?bilibili\.com\/(video|bangumi\/play)\/|^https?:\/\/b23\.tv\//i },
   { name: 'X', re: /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/i },
@@ -53,7 +54,7 @@ const SITES = [
 function setPageItem(t, url) {
   t.items = t.items.filter((it) => !it.page)
   const site = SITES.find((s) => s.re.test(url))
-  if (site) t.items.unshift({ url, kind: 'page', page: true, site: site.name, time: Date.now() })
+  if (site) t.items.unshift({ url, kind: 'page', page: true, site: site.name, builtin: !!site.builtin, time: Date.now() })
 }
 
 const MEDIA_EXT = /^(mp4|m4v|webm|mkv|mov|flv|avi|wmv|3gp|mp3|m4a|aac|ogg|oga|opus|wav|flac)$/
@@ -131,7 +132,7 @@ function fmtDur(s) {
 
 /** 給按鈕選單 / 彈出視窗顯示的文字 */
 function labelOf(it) {
-  if (it.page) return `${it.site} 影片（選擇畫質下載）`
+  if (it.page) return it.builtin ? `${it.site} 影片` : `${it.site} 影片（選擇畫質下載）`
   if (it.kind === 'hls') {
     const parts = ['HLS 串流']
     if (it.quality) parts.push(it.quality)
@@ -187,20 +188,38 @@ async function addItem(tabId, info, url, extra = {}) {
   const it = { url, ...info, ...extra, time: Date.now() }
   t.items.push(it)
   if (t.items.length > 40) t.items.shift()
-  if (it.kind === 'hls') await inspectHls(t, it)
+  if (it.kind === 'hls') await inspectHls(tabId, t, it)
   notifyTab(tabId)
 }
 
-/** 讀播放清單內容：master 的話記下子清單網址和最高畫質；一般清單算片長 */
-async function inspectHls(t, it) {
+/**
+ * 讀播放清單文字，回傳 { ok, text, url } 或 null。
+ * 有些 CDN 要看 Referer / Origin 是不是原網站（例如 missav 的 surrit.com），背景程式自己抓會被擋：
+ * 改請發出請求的那個框架裡的 content script 用網頁的身分抓
+ */
+async function fetchPlaylist(url, tabId, frameId) {
+  let got = null
   try {
-    const r = await fetch(it.url, { credentials: 'include' })
-    const text = await r.text()
+    const r = await fetch(url, { credentials: 'include' })
+    got = { ok: r.ok, text: await r.text(), url: r.url || url }
+  } catch {}
+  if (got?.ok && got.text.includes('#EXTM3U')) return got
+  const viaPage = await chrome.tabs.sendMessage(tabId, { type: 'fetchText', url }, { frameId: frameId || 0 }).catch(() => null)
+  return viaPage?.ok ? viaPage : got
+}
+
+/** 讀播放清單內容：master 的話記下子清單網址和最高畫質；一般清單算片長 */
+async function inspectHls(tabId, t, it) {
+  try {
+    const r = await fetchPlaylist(it.url, tabId, it.frameId)
+    // 抓不到（被擋、網路錯誤）就照樣列出來，只是沒有畫質、片長
+    if (!r || !r.ok) return
+    const text = r.text
     if (!text.includes('#EXTM3U')) {
       it.drm = true // 不是播放清單，當作無效項目藏起來
       return
     }
-    const base = r.url || it.url
+    const base = r.url
     const lines = text.split(/\r?\n/).map((l) => l.trim())
     if (lines.some((l) => l.startsWith('#EXT-X-STREAM-INF'))) {
       it.master = true
@@ -228,10 +247,8 @@ async function inspectHls(t, it) {
       if (best) it.quality = '最高 ' + best + 'p'
       // 再讀一層拿片長，才分得出正片和預告
       if (topUrl) {
-        try {
-          const sub = await (await fetch(topUrl, { credentials: 'include' })).text()
-          it.duration = durationOf(sub)
-        } catch {}
+        const sub = await fetchPlaylist(topUrl, tabId, it.frameId)
+        if (sub?.ok) it.duration = durationOf(sub.text)
       }
     } else {
       it.duration = durationOf(text)
@@ -268,7 +285,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     const rh = reqHeaders.get(d.requestId)
     reqHeaders.delete(d.requestId)
     if (!info) return
-    addItem(d.tabId, info, d.url, { referer: rh?.referer || '', origin: rh?.origin || '', frameUrl: d.documentUrl || d.initiator || '' })
+    addItem(d.tabId, info, d.url, { referer: rh?.referer || '', origin: rh?.origin || '', frameUrl: d.documentUrl || d.initiator || '', frameId: d.frameId })
   },
   { urls: ['http://*/*', 'https://*/*'] },
   ['responseHeaders'],
@@ -419,7 +436,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return reply(await sendToApp([{ url: msg.url, referer: msg.referer }], tab))
       case 'videoSrc':
         // 頁面上 <video src> 直接是檔案網址（擴充裝好前就載入的頁面也抓得到）
-        await addItem(tabId, { kind: /\.m3u8(\?|$)/i.test(msg.url) ? 'hls' : 'http', mime: '', size: -1, ext: ((/\.([a-z0-9]{2,4})(\?|$)/i.exec(msg.url) || [])[1] || '').toLowerCase() }, msg.url, { referer: msg.referer || '' })
+        await addItem(tabId, { kind: /\.m3u8(\?|$)/i.test(msg.url) ? 'hls' : 'http', mime: '', size: -1, ext: ((/\.([a-z0-9]{2,4})(\?|$)/i.exec(msg.url) || [])[1] || '').toLowerCase() }, msg.url, { referer: msg.referer || '', frameId: sender.frameId })
         return reply({ ok: true })
       case 'launch':
         launchApp(tabId)

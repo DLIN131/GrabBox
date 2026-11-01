@@ -275,7 +275,14 @@
     if (wrap.classList.contains('on') || Date.now() < showUntil) update()
   }, 400)
 
-  chrome.runtime.onMessage.addListener((msg) => {
+  chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+    if (msg.type === 'fetchText') {
+      // 背景程式抓播放清單被擋時，改從網頁這邊抓（帶網頁的 Origin / Referer，跟播放器一樣）
+      fetch(msg.url)
+        .then(async (r) => reply({ ok: r.ok, text: await r.text(), url: r.url || msg.url }))
+        .catch(() => reply(null))
+      return true
+    }
     if (msg.type === 'items') {
       const had = items.length
       items = msg.items || []
