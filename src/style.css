@@ -460,6 +460,36 @@ svg {
   font-size: 18px;
 }
 
+/* ───── 更新提示 ───── */
+.update-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 45;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  background: #1d212b;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  user-select: text;
+}
+.ub-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.ub-notes {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
 /* ───── 對話框 ───── */
 .modal {
   position: fixed;

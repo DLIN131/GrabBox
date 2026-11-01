@@ -35,6 +35,17 @@ contextBridge.exposeInMainWorld('gb', {
     setMagnet: () => ipcRenderer.invoke('app:setMagnet'),
     extensionDir: () => ipcRenderer.invoke('app:extensionDir'),
   },
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    notes: (v) => ipcRenderer.invoke('update:notes', v),
+    prepare: (onProgress) => {
+      const listener = (_e, p) => onProgress(p)
+      ipcRenderer.on('update:progress', listener)
+      return ipcRenderer.invoke('update:prepare').finally(() => ipcRenderer.removeListener('update:progress', listener))
+    },
+    install: () => ipcRenderer.invoke('update:install'),
+    onAvailable: on('update:available'),
+  },
   add: {
     init: (id) => ipcRenderer.invoke('add:init', id),
     probe: (id, url) => ipcRenderer.invoke('add:probe', id, url),

@@ -328,12 +328,40 @@ async function ping() {
       const j = await r.json()
       if (j.app === 'GrabBox') {
         goodPort = port
-        return { port, version: j.version }
+        return { port, version: j.version, ext: chrome.runtime.getManifest().version }
       }
     } catch {}
   }
   return null
 }
+
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number)
+  const pb = String(b).split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0)
+  return false
+}
+
+/**
+ * GrabBox 自動更新時會一起換掉資料夾裡的擴充檔案，但 Chrome 還在跑舊的：程式比較新就重新載入自己。
+ * 同一個版本只試一次（擴充如果是從別的資料夾載入的，重載也不會變新，不能一直重載）
+ */
+async function syncWithApp() {
+  const app = await ping()
+  if (!app || !isNewer(app.version, app.ext)) return
+  const { reloadedFor } = await chrome.storage.local.get('reloadedFor')
+  if (reloadedFor === app.version) return
+  await chrome.storage.local.set({ reloadedFor: app.version })
+  chrome.runtime.reload()
+}
+
+// 背景程式每次醒來檢查一次（醒來很頻繁，最多 10 分鐘查一次）
+ready.then(async () => {
+  const { syncedAt = 0 } = await chrome.storage.session.get('syncedAt').catch(() => ({}))
+  if (Date.now() - syncedAt < 10 * 60 * 1000) return
+  await chrome.storage.session.set({ syncedAt: Date.now() }).catch(() => {})
+  syncWithApp()
+})
 
 /** list = [{ url, kind, referer, origin, title }] */
 async function sendToApp(list, tab) {
@@ -376,8 +404,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     switch (msg.type) {
       case 'get':
         return reply({ items: visibleItems(tabId), settings })
-      case 'popup':
-        return reply({ items: visibleItems(tabId), settings, app: await ping() })
+      case 'popup': {
+        const app = await ping()
+        reply({ items: visibleItems(tabId), settings, app })
+        // 打開彈出視窗時也順便檢查一次版本
+        if (app && isNewer(app.version, app.ext)) setTimeout(syncWithApp, 500)
+        return
+      }
       case 'download': {
         const it = visibleItems(tabId).find((x) => x.url === msg.url) || { url: msg.url, kind: msg.kind || '' }
         return reply(await sendToApp([{ ...it, title: msg.title || tab?.title }], tab))

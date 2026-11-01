@@ -66,6 +66,14 @@ header b {
 section {
   padding: 10px 14px;
 }
+.hint {
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--err);
+  font-size: 12px;
+}
 .h {
   font-size: 12px;
   color: var(--dim);

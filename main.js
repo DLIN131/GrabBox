@@ -5,8 +5,13 @@ const crypto = require('crypto')
 const manager = require('./lib/manager')
 const server = require('./lib/server')
 const util = require('./lib/util')
+const updater = require('./lib/updater')
 
 app.setAppUserModelId('GrabBox')
+
+// 指定資料夾（測試或可攜用）：資料存在別處、不搶系統的協定關聯。一定要在單一實例鎖之前設定
+const separateData = process.env.GRABBOX_USER_DATA || ''
+if (separateData) app.setPath('userData', separateData)
 
 // 同時只開一份：再開一次（例如點了磁力連結）就交給原本那份處理
 if (!app.requestSingleInstanceLock()) {
@@ -18,7 +23,9 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // grabbox:// 讓擴充功能在程式沒開時可以叫醒它
-if (process.defaultApp) app.setAsDefaultProtocolClient('grabbox', process.execPath, [path.resolve(process.argv[1])])
+if (separateData) {
+  // 不註冊
+} else if (process.defaultApp) app.setAsDefaultProtocolClient('grabbox', process.execPath, [path.resolve(process.argv[1])])
 else app.setAsDefaultProtocolClient('grabbox')
 
 const ICON = path.join(__dirname, 'src', 'icon.png')
@@ -278,6 +285,57 @@ function setupIpc() {
   })
 }
 
+// ───────────────────────────── 自動更新 ─────────────────────────────
+
+let updateInfo = null
+let notifiedVersion = ''
+
+async function checkUpdate() {
+  if (!updater.supported()) return { status: 'dev', current: app.getVersion() }
+  try {
+    updateInfo = await updater.check()
+  } catch (e) {
+    return { status: 'error', current: app.getVersion(), error: e.message }
+  }
+  return updateInfo ? { status: 'available', current: app.getVersion(), info: updateInfo } : { status: 'latest', current: app.getVersion() }
+}
+
+/** 背景定期檢查：有新版就告訴主視窗；視窗收在系統匣時跳通知 */
+async function autoCheck() {
+  if (manager.getSettings().autoUpdate === false) return
+  const r = await checkUpdate()
+  if (r.status !== 'available') return
+  if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('update:available', r.info)
+  const visible = mainWin && !mainWin.isDestroyed() && mainWin.isVisible()
+  if (!visible && notifiedVersion !== r.info.version && Notification.isSupported()) {
+    notifiedVersion = r.info.version
+    const n = new Notification({ title: `GrabBox 有新版本 v${r.info.version}`, body: '點這裡開啟 GrabBox 更新', icon: ICON })
+    n.on('click', showMain)
+    n.show()
+  }
+}
+
+function setupUpdater() {
+  // 上次更新留下的暫存（約 200 MB）。程式能啟動就代表已經裝完，清掉
+  setTimeout(() => updater.cleanOld(), 3000)
+  setTimeout(autoCheck, 20 * 1000)
+  setInterval(autoCheck, 6 * 3600 * 1000)
+  ipcMain.handle('update:check', () => checkUpdate())
+  ipcMain.handle('update:notes', (_e, v) => updater.notesFor(v))
+  ipcMain.handle('update:prepare', async (e) => {
+    if (!updateInfo) throw new Error('沒有可以更新的版本')
+    await updater.prepare(updateInfo, (p) => !e.sender.isDestroyed() && e.sender.send('update:progress', p))
+    return true
+  })
+  ipcMain.handle('update:install', () => {
+    updater.install(() => {
+      quitting = true
+      app.quit()
+    })
+    return true
+  })
+}
+
 function setupManagerEvents() {
   const toAll = (ch, data) => {
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(ch, data)
@@ -303,6 +361,7 @@ app.whenReady().then(async () => {
   manager.init(app.getPath('userData'), path.join(app.getPath('downloads'), 'GrabBox'))
   setupIpc()
   setupManagerEvents()
+  setupUpdater()
   const hidden = process.argv.includes('--hidden') || process.argv.some((a) => /^(grabbox|magnet):/i.test(a) || /\.torrent$/i.test(a))
   createMain(!hidden)
   createTray()

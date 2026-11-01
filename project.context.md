@@ -37,6 +37,15 @@
 - 進度：`--progress-template` 輸出 `GBPROG 格式|已下載|總量|估計`，影像、聲音分開累計；每次啟動 yt-dlp 會從頭回報（含續傳部分），所以 `job.done` 歸零重算、第一筆不算速度。`--print after_move:GBFILE %(filepath)s` 拿最終檔名。暫停用 `taskkill /T /F`（yt-dlp.exe 底下有子程序和 ffmpeg），續傳靠 yt-dlp 的 `.part`。
 - 主視窗貼上一般網頁網址（Content-Type 是 HTML）時也會試 yt-dlp。
 
+## 自動更新（v1.0.4 起）
+
+- `lib/updater.js`（沿用 ReelBox 的做法）：主程序查 `api.github.com/repos/DLIN131/GrabBox/releases/latest`（頁面的 CSP 不能連外，所以不在頁面查）→ 下載 `GrabBox-Windows.zip` 到 `%TEMP%\GrabBox-update\<時間>` → PowerShell `Expand-Archive` 解壓 → 寫 `update.ps1`：`Wait-Process` 等程式結束 → `robocopy /E` 覆蓋安裝資料夾 → `Start-Process` 重開。log 在同一個暫存資料夾的 `update.log`。
+- 坑（都在註解裡）：一定要 `original-fs`（app.asar 會被當資料夾）；PowerShell 要用 detached 的 `cmd /c start` 開（直接 detached 沒有主控台會立刻結束、不 detached 會跟著程式被關）；路徑用環境變數傳（中文資料夾不亂碼）。
+- 啟動 20 秒後、之後每 6 小時檢查（設定可關）；主視窗右下角提示（立即更新 / 略過這個版本 / 稍後），視窗收在系統匣時跳系統通知。更新後第一次開啟顯示這版的更新內容（localStorage `lastSeenVersion`）。
+- 擴充跟著更新：程式更新會覆蓋 exe 旁的 `extension` 資料夾；擴充背景程式醒來時（最多 10 分鐘一次）和打開彈出視窗時 ping 程式，程式版本比 manifest 新就 `chrome.runtime.reload()`，同一個版本只試一次（`reloadedFor`），避免從別的資料夾載入時一直重載；還是舊的就在彈出視窗提示改從 GrabBox 資料夾載入。
+- 測試用環境變數：`GRABBOX_USER_DATA`（另一個資料夾、不註冊 grabbox:// 協定、不跟正在跑的 GrabBox 搶單一實例鎖）、`GRABBOX_UPDATE_API`（指到本機假的 GitHub）。實測流程：打包 A、B 兩份 → B 壓成 zip 由假 GitHub 提供 → A 用 `--hidden --remote-debugging-port` 啟動 → DevTools 協定呼叫 `gb.update.check/prepare/install` → 確認 A 的 version.txt 變成 B 的、新程序自動開起來。
+- 本機打包時 `app.getVersion()` 來自 package.json（CI 會 `npm version`），`APP_VERSION` 只影響 exe 資訊和 version.txt。
+
 ## 發布
 
 - Repo：github.com/DLIN131/GrabBox（公開）。推到 `main` 會跑 `.github/workflows/release.yml`：Node 22、`npm ci`、版本設成 `1.0.<run_number>`（package.json 和 extension/manifest.json 都改）、`node pack.js`、壓成 `GrabBox-Windows.zip` 發布到 Releases。
@@ -52,6 +61,12 @@
 - 擴充：`background.js` 放進 Node `vm` 搭配假的 chrome API 測偵測；`content.js` 放在含假 chrome 物件的測試頁，用 Electron `sendInputEvent` 模擬滑鼠截圖。
 
 ## 變更紀錄
+
+### v1.0.4（2026-11-01）
+
+- 新增自動更新：啟動後和每 6 小時檢查 GitHub 新版，右下角提示，按「立即更新」會下載、關閉、覆蓋並自動重新開啟；更新後第一次開啟顯示更新內容。設定裡可以關閉自動檢查、手動檢查更新。
+- 擴充在程式更新後自動重新載入自己；如果是從別的資料夾載入的，彈出視窗會提示改從 GrabBox 資料夾載入。
+- 側邊欄顯示目前版本。
 
 ### v1.0.3（2026-11-01）
 

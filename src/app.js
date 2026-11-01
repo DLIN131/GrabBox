@@ -497,6 +497,10 @@ async function settingsDialog() {
         <div class="hint">YouTube、Bilibili、X、Instagram、TikTok… 的影片由 yt-dlp 解析下載</div></div>
       <div class="inline"><button class="btn" id="sYtUp">立即更新 yt-dlp</button><span class="dim small" id="sYtSt">檢查版本中…</span></div>
 
+      <div class="sec-h">更新</div>
+      <label class="chk"><input type="checkbox" id="sAuto" ${s.autoUpdate !== false ? 'checked' : ''} />自動檢查新版本（有新版會提示，按一下就更新並重新開啟）</label>
+      <div class="inline"><button class="btn" id="sCheck">立即檢查更新</button><span class="dim small" id="sCheckSt">目前 v${esc(info.version)}</span></div>
+
       <div class="inline" style="justify-content:space-between;margin-top:6px">
         <span class="dim small">GrabBox v${esc(info.version)} · 本機服務埠 ${info.port || '啟動失敗'}</span>
         <span class="inline"><button class="btn" data-close>取消</button><button class="btn primary" id="sSave">儲存</button></span>
@@ -525,6 +529,17 @@ async function settingsDialog() {
     $('#sYtSt', body).textContent = (i.version ? '目前版本 ' + i.version + ' · ' : '') + String(msg).split(/\r?\n/).pop()
     $('#sYtUp', body).disabled = false
   }
+  $('#sCheck', body).onclick = async () => {
+    const stEl = $('#sCheckSt', body)
+    stEl.textContent = '檢查中…'
+    const r = await gb.update.check()
+    if (r.status === 'available') {
+      stEl.textContent = `有新版本 v${r.info.version}（右下角可以更新）`
+      showUpdateBar(r.info, r.current, true)
+    } else if (r.status === 'latest') stEl.textContent = `已經是最新版 v${r.current}`
+    else if (r.status === 'dev') stEl.textContent = '開發模式不檢查更新'
+    else stEl.textContent = '檢查失敗：' + (r.error || '')
+  }
   $('#sMagnet', body).onclick = async () => {
     const ok = await gb.app.setMagnet()
     $('#sMagnetSt', body).textContent = ok ? '✓ 已設為預設程式' : '設定失敗（Windows 可能要你到「預設應用程式」裡手動選擇）'
@@ -545,6 +560,7 @@ async function settingsDialog() {
       downLimit: Math.max(0, num('#sDown')),
       ffmpeg: $('#sFf', body).value.trim(),
       ytdlp: $('#sYt', body).value.trim(),
+      autoUpdate: $('#sAuto', body).checked,
     })
     closeModal()
   }
@@ -628,6 +644,77 @@ document.addEventListener('drop', (e) => {
   }
 })
 
+// ───────────────────────────── 自動更新 ─────────────────────────────
+
+const ls = {
+  get(k) {
+    try {
+      return localStorage.getItem(k)
+    } catch {
+      return null
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v)
+    } catch {}
+  },
+}
+
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number)
+  const pb = String(b).split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0)
+  return false
+}
+
+/** 右下角的更新提示 */
+function showUpdateBar(info, current, manual = false) {
+  if (!manual && ls.get('skippedVersion') === info.version) return
+  document.querySelector('.update-bar')?.remove()
+  const bar = document.createElement('div')
+  bar.className = 'update-bar'
+  bar.innerHTML = `
+    <div class="ub-head"><b>發現新版本 v${esc(info.version)}</b><span class="dim small">目前 v${esc(current)}</span></div>
+    <div class="ub-notes">${esc(info.notes || '')}</div>
+    <div class="ub-st dim small"></div>
+    <div class="inline" style="justify-content:flex-end">
+      <button class="btn" data-a="later">稍後</button><button class="btn" data-a="skip">略過這個版本</button><button class="btn primary" data-a="go">立即更新</button>
+    </div>`
+  const st = bar.querySelector('.ub-st')
+  const btns = [...bar.querySelectorAll('button')]
+  bar.querySelector('[data-a=later]').onclick = () => bar.remove()
+  bar.querySelector('[data-a=skip]').onclick = () => {
+    ls.set('skippedVersion', info.version)
+    bar.remove()
+  }
+  bar.querySelector('[data-a=go]').onclick = async () => {
+    const active = [...jobs.values()].some((j) => j.status === 'running')
+    if (active && !confirm('還有檔案在下載，更新後會自動從中斷的地方繼續。要現在更新嗎？')) return
+    btns.forEach((b) => (b.disabled = true))
+    try {
+      await gb.update.prepare((p) => (st.textContent = p > 100 ? '解壓縮中…' : p >= 0 ? `下載更新 ${p}%` : '下載更新中…'))
+      st.textContent = '下載完成，GrabBox 會關閉並自動重新開啟…'
+      await gb.update.install()
+    } catch (e) {
+      st.textContent = '更新失敗：' + String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+      btns.forEach((b) => (b.disabled = false))
+    }
+  }
+  document.body.appendChild(bar)
+}
+
+/** 更新完第一次開啟：顯示這次更新了什麼 */
+async function showWhatsNew(version) {
+  const last = ls.get('lastSeenVersion')
+  ls.set('lastSeenVersion', version)
+  if (!last || !isNewer(version, last)) return
+  const notes = await gb.update.notes(version)
+  openModal(`已更新到 v${version}`, `<div style="white-space:pre-wrap;line-height:1.7">${esc(notes || '這一版沒有寫更新說明')}</div>`, 560)
+}
+
+gb.update.onAvailable(async (info) => showUpdateBar(info, (await gb.app.info()).version))
+
 // ───────────────────────────── 啟動 ─────────────────────────────
 
 gb.jobs.onUpdate(upsert)
@@ -647,5 +734,6 @@ applyIcons()
   for (const j of await gb.jobs.list()) jobs.set(j.id, j)
   renderList()
   const info = await gb.app.info()
-  $('#conn').textContent = info.port ? `擴充連線埠 ${info.port}` : '本機服務啟動失敗'
+  $('#conn').textContent = (info.port ? `擴充連線埠 ${info.port}` : '本機服務啟動失敗') + ` · v${info.version}`
+  showWhatsNew(info.version)
 })()

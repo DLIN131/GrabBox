@@ -12,7 +12,7 @@ Windows 下載管理器，類似 IDM：
 
 最新版：[GrabBox-Windows.zip](https://github.com/DLIN131/GrabBox/releases/latest/download/GrabBox-Windows.zip)（解壓縮後執行 `GrabBox.exe`，瀏覽器擴充在同一個資料夾的 `extension` 裡）。
 
-每次推到 `main` 都會由 GitHub Actions 自動打包並發布新版（v1.0.<編號>）。
+每次推到 `main` 都會由 GitHub Actions 自動打包並發布新版（v1.0.<編號>）。v1.0.4 起程式會自動檢查新版，按一下就更新並重新開啟，瀏覽器擴充也會跟著自動重新載入（擴充要從 GrabBox 資料夾裡的 `extension` 載入）。
 
 ## 開發
 

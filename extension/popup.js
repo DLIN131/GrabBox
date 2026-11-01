@@ -5,11 +5,23 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 }
 
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number)
+  const pb = String(b).split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0)
+  return false
+}
+
 function setStatus(app) {
   const st = $('#st')
   if (app) {
     st.className = 'st ok'
     st.textContent = `● 已連線 v${app.version}`
+    // 程式已更新、擴充還是舊的（而且自動重載過了還是舊的）：多半是從別的資料夾載入
+    if (app.ext && isNewer(app.version, app.ext)) {
+      $('#hint').textContent = `擴充是 v${app.ext}、程式是 v${app.version}。請到 chrome://extensions 移除 GrabBox 擴充，再「載入未封裝項目」選 GrabBox 資料夾裡的 extension，之後程式更新時擴充會自動跟著更新。`
+      $('#hint').style.display = ''
+    }
   } else {
     st.className = 'st err'
     st.innerHTML = '● 程式沒有開啟<a id="launch">啟動</a>'
