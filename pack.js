@@ -19,7 +19,7 @@ packager({
   appVersion: version,
   win32metadata: { CompanyName: 'GrabBox', FileDescription: 'GrabBox 下載管理器', ProductName: 'GrabBox' },
   // 只排除專案根目錄的東西（路徑以 / 開頭、相對於專案資料夾）
-  ignore: [/^\/dist($|\/)/, /^\/out($|\/)/, /^\/tools($|\/)/, /^\/extension($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/, /^\/README\.md$/, /^\/project\.context\.md$/],
+  ignore: [/^\/\.github($|\/)/, /^\/dist($|\/)/, /^\/out($|\/)/, /^\/tools($|\/)/, /^\/extension($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/, /^\/README\.md$/, /^\/project\.context\.md$/],
 })
   .then(([appPath]) => {
     // 瀏覽器擴充放在 GrabBox.exe 旁邊，使用者用「載入未封裝項目」選這個資料夾

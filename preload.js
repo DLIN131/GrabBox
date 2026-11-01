@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('gb', {
     set: (p) => ipcRenderer.invoke('settings:set', p),
     chooseDir: () => ipcRenderer.invoke('settings:chooseDir'),
     chooseFile: () => ipcRenderer.invoke('settings:chooseFile'),
+    ytdlpInfo: () => ipcRenderer.invoke('settings:ytdlpInfo'),
+    ytdlpUpdate: () => ipcRenderer.invoke('settings:ytdlpUpdate'),
   },
   app: {
     info: () => ipcRenderer.invoke('app:info'),
@@ -37,5 +39,6 @@ contextBridge.exposeInMainWorld('gb', {
     init: (id) => ipcRenderer.invoke('add:init', id),
     probe: (id, url) => ipcRenderer.invoke('add:probe', id, url),
     confirm: (id, spec) => ipcRenderer.invoke('add:confirm', id, spec),
+    onStatus: on('add:status'),
   },
 })

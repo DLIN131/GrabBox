@@ -34,6 +34,28 @@ chrome.storage.onChanged.addListener((ch, area) => {
 
 // ───────────────────────────── 偵測 ─────────────────────────────
 
+// 這些網站的影片是分段 / 加簽名的串流，網路請求裡抓不到完整檔案：直接把「網頁網址」交給 GrabBox（yt-dlp）。
+// 清單跟 lib/ytdlp.js 的 SITES 一致
+const SITES = [
+  { name: 'YouTube', re: /^https?:\/\/((www|m|music)\.)?youtube\.com\/(watch\?|shorts\/|live\/|embed\/)|^https?:\/\/youtu\.be\//i },
+  { name: 'Bilibili', re: /^https?:\/\/((www|m)\.)?bilibili\.com\/(video|bangumi\/play)\/|^https?:\/\/b23\.tv\//i },
+  { name: 'X', re: /^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\/[^/]+\/status\/\d+/i },
+  { name: 'Instagram', re: /^https?:\/\/(www\.)?instagram\.com\/(p|reel|reels|tv)\//i },
+  { name: 'Facebook', re: /^https?:\/\/(www\.|m\.|web\.)?facebook\.com\/(watch|reel|.+\/videos\/)|^https?:\/\/fb\.watch\//i },
+  { name: 'TikTok', re: /^https?:\/\/(www\.)?tiktok\.com\/@[^/]+\/video\/\d+/i },
+  { name: 'Vimeo', re: /^https?:\/\/(www\.)?vimeo\.com\/\d+/i },
+  { name: 'Twitch', re: /^https?:\/\/(www\.|m\.)?twitch\.tv\/(videos\/\d+|[^/]+\/clip\/)|^https?:\/\/clips\.twitch\.tv\//i },
+  { name: 'Dailymotion', re: /^https?:\/\/(www\.)?dailymotion\.com\/video\//i },
+  { name: 'niconico', re: /^https?:\/\/(www\.|sp\.)?nicovideo\.jp\/watch\//i },
+]
+
+/** 分頁換到支援的影音網站頁面時，加一個「整頁交給 yt-dlp」的項目（排在最前面） */
+function setPageItem(t, url) {
+  t.items = t.items.filter((it) => !it.page)
+  const site = SITES.find((s) => s.re.test(url))
+  if (site) t.items.unshift({ url, kind: 'page', page: true, site: site.name, time: Date.now() })
+}
+
 const MEDIA_EXT = /^(mp4|m4v|webm|mkv|mov|flv|avi|wmv|3gp|mp3|m4a|aac|ogg|oga|opus|wav|flac)$/
 const SEGMENT_EXT = /^(ts|m4s|m4f|m4v_|cmfv|cmfa|aac_|vtt|webvtt|key)$/
 
@@ -109,6 +131,7 @@ function fmtDur(s) {
 
 /** 給按鈕選單 / 彈出視窗顯示的文字 */
 function labelOf(it) {
+  if (it.page) return `${it.site} 影片（選擇畫質下載）`
   if (it.kind === 'hls') {
     const parts = ['HLS 串流']
     if (it.quality) parts.push(it.quality)
@@ -126,7 +149,7 @@ function visibleItems(tabId) {
   const kids = new Set(t.children)
   return t.items
     .filter((it) => !it.drm && !(it.kind === 'hls' && !it.master && (kids.has(it.url) || kids.has(stripQuery(it.url)))))
-    .sort((a, b) => (b.master ? 1 : 0) - (a.master ? 1 : 0) || (b.size || 0) - (a.size || 0) || b.time - a.time)
+    .sort((a, b) => (b.page ? 1 : 0) - (a.page ? 1 : 0) || (b.master ? 1 : 0) - (a.master ? 1 : 0) || (b.size || 0) - (a.size || 0) || b.time - a.time)
     .map((it) => ({ ...it, label: labelOf(it) }))
 }
 
@@ -220,7 +243,9 @@ chrome.webRequest.onBeforeRequest.addListener(
   async (d) => {
     if (d.type !== 'main_frame' || d.tabId < 0) return
     await ready
-    tabs.set(d.tabId, { page: d.url, items: [], children: [] })
+    const t = { page: d.url, items: [], children: [] }
+    setPageItem(t, d.url)
+    tabs.set(d.tabId, t)
     notifyTab(d.tabId)
   },
   { urls: ['http://*/*', 'https://*/*'], types: ['main_frame'] },
@@ -229,14 +254,18 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.tabs.onUpdated.addListener(async (tabId, ch) => {
   if (!ch.url) return
   await ready
-  const t = tabs.get(tabId)
-  // 單頁式網站切換影片（網址變了但沒有重新載入）
-  if (t && t.page && t.page.split('#')[0] !== ch.url.split('#')[0]) {
+  const t = tabState(tabId)
+  const changed = t.page.split('#')[0] !== ch.url.split('#')[0]
+  // 單頁式網站切換影片（網址變了但沒有重新載入，例如 YouTube 點下一部）
+  if (changed && t.page) {
     const keepAfter = Date.now() - 1500
-    t.items = t.items.filter((it) => it.time > keepAfter)
-    t.page = ch.url
+    t.items = t.items.filter((it) => it.time > keepAfter && !it.page)
+  }
+  t.page = ch.url
+  if (changed || !t.items.some((it) => it.page)) {
+    setPageItem(t, ch.url)
     notifyTab(tabId)
-  } else if (t) t.page = ch.url
+  }
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -336,11 +365,21 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
 // ───────────────────────────── 右鍵選單 ─────────────────────────────
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: 'gb-link', title: '用 GrabBox 下載這個連結', contexts: ['link'] })
     chrome.contextMenus.create({ id: 'gb-media', title: '用 GrabBox 下載這個影片 / 音訊', contexts: ['video', 'audio'] })
   })
+  // 剛安裝 / 重新載入時，已經開著的分頁不用重新整理就能用
+  await ready
+  const open = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }).catch(() => [])
+  for (const tab of open) {
+    const t = tabState(tab.id)
+    t.page = tab.url
+    setPageItem(t, tab.url)
+    chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['content.js'] }).catch(() => {})
+    notifyTab(tab.id)
+  }
 })
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {

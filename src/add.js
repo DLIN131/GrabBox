@@ -27,9 +27,25 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
-function setKind(kind) {
-  const icon = kind === 'torrent' ? 'magnet' : kind === 'hls' ? 'stream' : kind === 'http' ? 'down' : 'plus'
-  const el = $('#kindIcon')
+function setKind(kind, thumb) {
+  const icon = kind === 'torrent' ? 'magnet' : kind === 'hls' ? 'stream' : kind === 'ytdlp' ? 'film' : kind === 'http' ? 'down' : 'plus'
+  let el = $('#kindIcon')
+  if (thumb) {
+    // 影音網站有縮圖就顯示縮圖
+    const img = document.createElement('img')
+    img.id = 'kindIcon'
+    img.className = 'thumb'
+    img.src = thumb
+    img.onerror = () => setKind(kind)
+    el.replaceWith(img)
+    return
+  }
+  if (el.tagName === 'IMG') {
+    const div = document.createElement('div')
+    div.id = 'kindIcon'
+    el.replaceWith(div)
+    el = div
+  }
   el.className = 'kind big ' + (kind || '')
   el.innerHTML = iconSvg(icon, 20)
 }
@@ -68,9 +84,9 @@ async function analyze() {
 
 function show() {
   status('')
-  setKind(info.kind)
+  setKind(info.kind, info.thumbnail)
   $('#info').classList.remove('hidden')
-  $('#hlsBox').classList.toggle('hidden', info.kind !== 'hls')
+  $('#hlsBox').classList.toggle('hidden', info.kind !== 'hls' && info.kind !== 'ytdlp')
   $('#torrentBox').classList.toggle('hidden', info.kind !== 'torrent')
   $('#nameBox').classList.toggle('hidden', info.kind === 'torrent')
   const facts = []
@@ -94,6 +110,15 @@ function show() {
     if (info.encrypted) fact('', 'AES-128 加密（會自動解密）')
     if (info.live) fact('', '直播：只會下載目前已有的片段', true)
     if (!info.ffmpeg) fact('', '找不到 ffmpeg，會存成 .ts', true)
+  } else if (info.kind === 'ytdlp') {
+    $('#headTitle').textContent = info.title
+    $('#headSub').textContent = [info.site, info.uploader].filter(Boolean).join(' · ')
+    const sel = $('#variant')
+    sel.innerHTML = info.choices.map((c, i) => `<option value="${i}">${esc(c.label)}${c.size ? '　約 ' + fmtBytes(c.size) : ''}</option>`).join('')
+    $('#name').value = info.name + '.' + info.choices[0].ext
+    if (info.duration) fact('片長', fmtDur(info.duration))
+    if (info.site) fact('網站', info.site)
+    if (!info.ffmpeg) fact('', '找不到 ffmpeg，高畫質可能無法合併聲音', true)
   } else if (info.kind === 'torrent') {
     $('#headTitle').textContent = info.name
     $('#headSub').textContent = 'BT 種子'
@@ -148,6 +173,10 @@ async function confirm(paused) {
     const name = $('#name').value.trim()
     if (!name) return $('#name').focus()
     Object.assign(spec, { url: info.url, name, total: info.size || -1 })
+    if (info.kind === 'ytdlp') {
+      const c = info.choices[Number($('#variant').value) || 0]
+      Object.assign(spec, { format: c.id, ext: c.ext, total: c.size || -1 })
+    }
     if (info.kind === 'hls') {
       const v = info.variants[Number($('#variant').value) || 0]
       spec.tracks = [{ url: v.url, type: 'video' }]
@@ -163,6 +192,14 @@ async function confirm(paused) {
     setReady(true)
   }
 }
+
+// 影音網站切換「影片 / 只要聲音」時，檔名的副檔名跟著換
+$('#variant').addEventListener('change', () => {
+  if (info?.kind !== 'ytdlp') return
+  const c = info.choices[Number($('#variant').value) || 0]
+  $('#name').value = $('#name').value.replace(/\.(mp4|m4a|mp3)$/i, '') + '.' + c.ext
+})
+gb.add.onStatus((text) => busy && status(text, 'busy'))
 
 $('#start').onclick = () => confirm(false)
 $('#later').onclick = () => confirm(true)

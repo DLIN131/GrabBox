@@ -16,6 +16,14 @@
   height: 40px;
   border-radius: 10px;
 }
+.thumb {
+  width: 96px;
+  height: 54px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--panel2);
+}
 .ht {
   font-size: 15px;
   font-weight: 600;

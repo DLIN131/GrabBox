@@ -47,7 +47,7 @@ function esc(s) {
 const VIDEO_RE = /\.(mp4|m4v|webm|mkv|mov|flv|avi|wmv|ts|mpg|mpeg|3gp)$/i
 
 function isVideo(j) {
-  return j.kind === 'hls' || VIDEO_RE.test(j.name || '')
+  return j.kind === 'hls' || VIDEO_RE.test(j.name || '') || (j.kind === 'ytdlp' && !/\.(m4a|mp3)$/i.test(j.name || ''))
 }
 
 function progressOf(j) {
@@ -73,6 +73,11 @@ function statusText(j) {
         if (j.phase === 'meta') return '正在從節點取得種子資訊…'
         if (j.phase === 'verify') return '校驗已下載的資料…'
         return `下載中 · 節點 ${j.peers || 0} · 上傳 ${fmtBytes(j.upSpeed || 0)}/s`
+      }
+      if (j.kind === 'ytdlp') {
+        if (j.phase === 'prepare') return '解析影片…'
+        if (j.phase === 'merge') return '合併影像與聲音…'
+        return '下載中'
       }
       if (j.phase === 'merge') return '合併片段、轉成 MP4…'
       if (j.kind === 'hls') return j.segs ? `下載中 · 片段 ${Math.round((j.progress || 0) * j.segs)}/${j.segs}` : '讀取播放清單…'
@@ -486,6 +491,12 @@ async function settingsDialog() {
         <div class="inline"><input class="inp" id="sFf" value="${esc(s.ffmpeg)}" placeholder="內建 ffmpeg" /><button class="btn" id="sFfBtn">選擇…</button></div>
         <div class="hint">用來把下載好的串流片段轉成 MP4</div></div>
 
+      <div class="sec-h">YouTube 等影音網站（yt-dlp）</div>
+      <div class="field"><label>yt-dlp 路徑（留空 = 自動下載並每週更新）</label>
+        <div class="inline"><input class="inp" id="sYt" value="${esc(s.ytdlp)}" placeholder="自動管理" /><button class="btn" id="sYtBtn">選擇…</button></div>
+        <div class="hint">YouTube、Bilibili、X、Instagram、TikTok… 的影片由 yt-dlp 解析下載</div></div>
+      <div class="inline"><button class="btn" id="sYtUp">立即更新 yt-dlp</button><span class="dim small" id="sYtSt">檢查版本中…</span></div>
+
       <div class="inline" style="justify-content:space-between;margin-top:6px">
         <span class="dim small">GrabBox v${esc(info.version)} · 本機服務埠 ${info.port || '啟動失敗'}</span>
         <span class="inline"><button class="btn" data-close>取消</button><button class="btn primary" id="sSave">儲存</button></span>
@@ -500,6 +511,19 @@ async function settingsDialog() {
   $('#sFfBtn', body).onclick = async () => {
     const f = await gb.settings.chooseFile()
     if (f) $('#sFf', body).value = f
+  }
+  $('#sYtBtn', body).onclick = async () => {
+    const f = await gb.settings.chooseFile()
+    if (f) $('#sYt', body).value = f
+  }
+  gb.settings.ytdlpInfo().then((i) => ($('#sYtSt', body).textContent = i.version ? '目前版本 ' + i.version : '還沒下載（第一次用到時會自動下載）'))
+  $('#sYtUp', body).onclick = async () => {
+    $('#sYtUp', body).disabled = true
+    $('#sYtSt', body).textContent = '更新中…'
+    const msg = await gb.settings.ytdlpUpdate()
+    const i = await gb.settings.ytdlpInfo()
+    $('#sYtSt', body).textContent = (i.version ? '目前版本 ' + i.version + ' · ' : '') + String(msg).split(/\r?\n/).pop()
+    $('#sYtUp', body).disabled = false
   }
   $('#sMagnet', body).onclick = async () => {
     const ok = await gb.app.setMagnet()
@@ -520,6 +544,7 @@ async function settingsDialog() {
       upLimit: Math.max(0, num('#sUp')),
       downLimit: Math.max(0, num('#sDown')),
       ffmpeg: $('#sFf', body).value.trim(),
+      ytdlp: $('#sYt', body).value.trim(),
     })
     closeModal()
   }

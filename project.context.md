@@ -19,6 +19,16 @@
 - **種子**：新增視窗取得資訊時，磁力連結會用 `deselect:true` 加進 client 拿 metadata、存成 `userData/torrents/<infoHash>.torrent` 後馬上移除；真正開始時從存檔加入，並把磁力連結的 `tr=`、`x.pe=` 補回去（否則會找不到節點）。暫停 = destroy（保留檔案），每 30 秒存 bitfield，下次啟動用 `opts.bitfield` 只抽查不全部重算。
 - **沒勾選的種子檔案**：會因邊界區塊被寫入而撐到接近原大小（內容幾乎是 0），種子停止（完成且不做種）時 `cleanupUnselected` 會刪掉。WebTorrent 的 `done` 事件要所有檔案完成才會觸發，所以完成判斷自己做（勾選的檔案都 done）。
 
+## YouTube 等影音網站（yt-dlp）
+
+- 一般偵測刻意過濾 googlevideo.com、.m4s、帶 range 參數的請求（DASH 片段接不起來），所以這些網站改成「整頁交給 yt-dlp」：擴充 `background.js` 的 `SITES` 在分頁網址符合時加一個 `kind: 'page'` 項目（排第一），`lib/ytdlp.js` 有同一份清單（兩邊要一起改）。
+- yt-dlp.exe 不放進安裝包：第一次用時從 `github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe` 下載到 `userData/bin`，啟動 1 分鐘後若超過 7 天沒更新就跑 `yt-dlp -U`。設定可改成自訂路徑（就不自動更新）。
+- YouTube 需要 JS runtime（Node ≥ 22，見 yt-dlp wiki 的 EJS 頁）：用 `--js-runtimes node:<process.execPath>` 加環境變數 `ELECTRON_RUN_AS_NODE=1`，讓 Electron 自己當 Node。官方 yt-dlp.exe 已內含 EJS 腳本。
+- YouTube 不帶 Cookie（`noCookies`），其他網站把擴充送來的 Cookie 轉成 Netscape cookies.txt 暫存檔給 `--cookies`。
+- 畫質選項 id：`v<高度>` → `-f bv*+ba/b -S res:<高度>,ext:mp4:m4a --merge-output-format mp4`；`a-m4a`、`a-mp3` 只要聲音。
+- 進度：`--progress-template` 輸出 `GBPROG 格式|已下載|總量|估計`，影像、聲音分開累計；每次啟動 yt-dlp 會從頭回報（含續傳部分），所以 `job.done` 歸零重算、第一筆不算速度。`--print after_move:GBFILE %(filepath)s` 拿最終檔名。暫停用 `taskkill /T /F`（yt-dlp.exe 底下有子程序和 ffmpeg），續傳靠 yt-dlp 的 `.part`。
+- 主視窗貼上一般網頁網址（Content-Type 是 HTML）時也會試 yt-dlp。
+
 ## 發布
 
 - Repo：github.com/DLIN131/GrabBox（公開）。推到 `main` 會跑 `.github/workflows/release.yml`：Node 22、`npm ci`、版本設成 `1.0.<run_number>`（package.json 和 extension/manifest.json 都改）、`node pack.js`、壓成 `GrabBox-Windows.zip` 發布到 Releases。
@@ -34,6 +44,13 @@
 - 擴充：`background.js` 放進 Node `vm` 搭配假的 chrome API 測偵測；`content.js` 放在含假 chrome 物件的測試頁，用 Electron `sendInputEvent` 模擬滑鼠截圖。
 
 ## 變更紀錄
+
+### v1.0.2（2026-11-01）
+
+- 支援 YouTube、Bilibili、X、Instagram、Facebook、TikTok、Vimeo、Twitch、Dailymotion、niconico：這些網站的影片頁，影片上的按鈕會出現「選擇畫質下載」，交給 yt-dlp（自動下載、每週更新），可選畫質或只要聲音（M4A / MP3）。
+- 新增視窗：影音網站顯示縮圖、上傳者、畫質清單；長時間步驟（第一次下載 yt-dlp、解析）會顯示進度文字；視窗加高。
+- 擴充：安裝 / 重新載入時自動注入到已開啟的分頁（新增 `scripting` 權限），舊版本留下的按鈕會自己移除。
+- 設定：yt-dlp 路徑、立即更新 yt-dlp。
 
 ### v1.0.0（2026-11-01）
 

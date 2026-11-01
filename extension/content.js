@@ -1,8 +1,16 @@
 // 在影片上顯示「下載此影片」按鈕（滑鼠移到影片上、或剛偵測到影片時出現），
 // 並把磁力連結 / .torrent 連結的點擊交給 GrabBox。介面放在 Shadow DOM 裡，不會被網頁樣式影響。
 ;(() => {
-  if (window.__grabboxLoaded) return
-  window.__grabboxLoaded = true
+  // 擴充重新載入後，舊的這份會失去連線（chrome.runtime.id 變成 undefined），要讓新的接手
+  const alive = () => {
+    try {
+      return !!chrome.runtime?.id
+    } catch {
+      return false
+    }
+  }
+  if (window.__grabboxAlive?.()) return
+  window.__grabboxAlive = alive
 
   let items = []
   let settings = { overlay: true, magnet: true }
@@ -109,6 +117,12 @@
   }
 
   function update() {
+    if (!alive()) {
+      // 舊版本留下來的：把自己的介面拿掉，交給新載入的那份
+      host.remove()
+      clearInterval(timer)
+      return
+    }
     const bar = $('.bar')
     if (Date.now() < linkUntil) {
       // 點了磁力 / 種子連結：只在右上角顯示提示
@@ -256,7 +270,7 @@
     })
   }
   // 版面會自己變（播放器展開、廣告插入），按鈕顯示時定期對齊位置
-  setInterval(() => {
+  const timer = setInterval(() => {
     if (wrap.classList.contains('on') || Date.now() < showUntil) update()
   }, 400)
 

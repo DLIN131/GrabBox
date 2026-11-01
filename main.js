@@ -107,7 +107,7 @@ function openAdd(req) {
   const id = crypto.randomUUID()
   const win = new BrowserWindow({
     width: 640,
-    height: 500,
+    height: 560,
     minWidth: 520,
     minHeight: 380,
     show: false,
@@ -162,13 +162,16 @@ async function quickAdd(req) {
     const info = await manager.probe(req)
     if (info.kind === 'torrent') return openAdd(req)
     const v = info.variants?.[0]
+    const c = info.choices?.[0]
     manager.add({
       kind: info.kind,
-      url: req.url,
+      url: info.kind === 'ytdlp' ? info.url : req.url,
       headers: req.headers,
       name: info.name,
       tracks: v ? [{ url: v.url, type: 'video' }, ...(v.audioUrl ? [{ url: v.audioUrl, type: 'audio' }] : [])] : null,
-      total: info.size || -1,
+      format: c?.id,
+      ext: c?.ext,
+      total: c?.size || info.size || -1,
     })
   } catch (e) {
     new Notification({ title: '無法下載', body: e.message, icon: ICON }).show()
@@ -225,9 +228,12 @@ function setupIpc() {
     return r.canceled ? '' : r.filePaths[0]
   })
   ipcMain.handle('settings:chooseFile', async (e) => {
-    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { properties: ['openFile'], filters: [{ name: 'ffmpeg', extensions: ['exe'] }] })
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), { properties: ['openFile'], filters: [{ name: '執行檔', extensions: ['exe'] }] })
     return r.canceled ? '' : r.filePaths[0]
   })
+
+  ipcMain.handle('settings:ytdlpInfo', () => manager.ytdlpInfo())
+  ipcMain.handle('settings:ytdlpUpdate', () => manager.ytdlpUpdate())
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), port: server.port(), magnet: app.isDefaultProtocolClient('magnet') }))
   ipcMain.handle('app:newUrl', (_e, url) => openAdd({ url: url || clipboardUrl() }))
@@ -260,8 +266,8 @@ function setupIpc() {
   ipcMain.handle('add:probe', async (_e, id, url) => {
     const p = pending.get(id)
     if (!p) throw new Error('視窗已關閉')
-    if (url && url !== p.req.url) p.req = { ...p.req, url, torrentFile: '' }
-    return manager.probe(p.req, p.ctrl.signal)
+    if (url && url !== p.req.url) p.req = { ...p.req, url, torrentFile: '', kind: '' }
+    return manager.probe(p.req, p.ctrl.signal, (text) => !p.win.isDestroyed() && p.win.webContents.send('add:status', text))
   })
   ipcMain.handle('add:confirm', (_e, id, spec) => {
     const p = pending.get(id)
