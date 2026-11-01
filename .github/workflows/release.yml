@@ -1,0 +1,48 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # WebTorrent 3 需要 Node 22
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Build Windows app
+        shell: pwsh
+        run: |
+          $v = "1.0.${{ github.run_number }}"
+          npm ci --no-audit --no-fund
+          npm version $v --no-git-tag-version
+          # 擴充功能的版本跟程式一起
+          node -e "const f='extension/manifest.json';const m=require('./'+f);m.version='$v';require('fs').writeFileSync(f, JSON.stringify(m, null, 2) + '\n')"
+          $env:APP_VERSION = $v
+          node pack.js dist
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path dist/GrabBox-win32-x64/* -DestinationPath out/GrabBox-Windows.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: GrabBox v1.0.${{ github.run_number }}
+          make_latest: true
+          files: out/GrabBox-Windows.zip
+          body: |
+            ${{ github.event.head_commit.message }}
+
+            ---
+            固定下載網址（永遠是最新版）：https://github.com/${{ github.repository }}/releases/latest/download/GrabBox-Windows.zip

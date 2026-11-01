@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'" />
+    <title>GrabBox</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand"><img src="icon.png" alt="" /><span>GrabBox</span></div>
+      <button id="btnAdd" class="tb primary" title="新增網址（Ctrl+N）"><i data-i="plus"></i><span class="lb">新增網址</span></button>
+      <button id="btnTorrent" class="tb" title="開啟 .torrent 檔或貼上磁力連結"><i data-i="magnet"></i><span class="lb">新增種子</span></button>
+      <span class="sep"></span>
+      <button id="btnResume" class="tb sm" title="繼續"><i data-i="play"></i><span class="lb">繼續</span></button>
+      <button id="btnPause" class="tb sm" title="暫停"><i data-i="pause"></i><span class="lb">暫停</span></button>
+      <button id="btnRemove" class="tb sm" title="刪除（Del）"><i data-i="trash"></i><span class="lb">刪除</span></button>
+      <span class="sep"></span>
+      <button id="btnResumeAll" class="tb sm" title="全部繼續"><i data-i="playall"></i><span class="lb">全部繼續</span></button>
+      <button id="btnPauseAll" class="tb sm" title="全部暫停"><i data-i="stop"></i><span class="lb">全部暫停</span></button>
+      <span class="grow"></span>
+      <input id="search" type="search" placeholder="搜尋檔名…" />
+      <button id="btnExt" class="tb" title="瀏覽器擴充"><i data-i="puzzle"></i></button>
+      <button id="btnSettings" class="tb" title="設定"><i data-i="gear"></i></button>
+    </header>
+
+    <div class="body">
+      <nav class="side">
+        <a data-cat="all" class="on"><i data-i="list"></i>全部<span class="n"></span></a>
+        <a data-cat="active"><i data-i="down"></i>下載中<span class="n"></span></a>
+        <a data-cat="unfinished"><i data-i="pause"></i>未完成<span class="n"></span></a>
+        <a data-cat="done"><i data-i="check"></i>已完成<span class="n"></span></a>
+        <div class="side-h">類型</div>
+        <a data-cat="video"><i data-i="film"></i>影片<span class="n"></span></a>
+        <a data-cat="torrent"><i data-i="magnet"></i>種子<span class="n"></span></a>
+        <a data-cat="other"><i data-i="file"></i>其他檔案<span class="n"></span></a>
+        <div class="grow"></div>
+        <div class="side-foot">
+          <div><span class="dim">總速度</span> <b id="totalSpeed">0 B/s</b></div>
+          <div id="conn" class="dim small"></div>
+        </div>
+      </nav>
+
+      <main class="main">
+        <div class="thead row">
+          <div class="c-name">名稱</div>
+          <div class="c-size">大小</div>
+          <div class="c-prog">進度</div>
+          <div class="c-speed">速度</div>
+          <div class="c-eta">剩餘時間</div>
+        </div>
+        <div id="list" class="list"></div>
+        <div id="empty" class="empty hidden">
+          <img src="icon.png" alt="" />
+          <h2>還沒有下載任務</h2>
+          <p>在瀏覽器裝上 GrabBox 擴充功能後，看影片時會自動跳出「下載此影片」按鈕。<br />也可以按 <b>Ctrl+V</b> 貼上網址 / 磁力連結，或把 .torrent 檔拖進來。</p>
+          <div class="row-btns">
+            <button class="btn primary" data-act="add">新增網址</button>
+            <button class="btn" data-act="ext">安裝瀏覽器擴充</button>
+          </div>
+        </div>
+        <section id="detail" class="detail hidden"></section>
+      </main>
+    </div>
+
+    <div id="menu" class="menu hidden"></div>
+    <div id="drop" class="drop hidden"><div>放開以加入種子檔</div></div>
+
+    <div id="modal" class="modal hidden">
+      <div class="dialog">
+        <div class="dlg-head"><h3 id="modalTitle"></h3><button class="x" data-close>×</button></div>
+        <div id="modalBody" class="dlg-body"></div>
+      </div>
+    </div>
+
+    <script src="icons.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

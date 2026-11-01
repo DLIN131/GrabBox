@@ -1,0 +1,134 @@
+:root {
+  --bg: #fff;
+  --panel: #f4f6fa;
+  --line: #e2e6ee;
+  --text: #1b1f29;
+  --dim: #6b7280;
+  --accent: #3b74e6;
+  --hover: #eaf0fd;
+  --ok: #059669;
+  --err: #dc2626;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171a21;
+    --panel: #1e222b;
+    --line: #2a2f3b;
+    --text: #e6e8ee;
+    --dim: #8d93a3;
+    --accent: #4f8cff;
+    --hover: #263352;
+    --ok: #34d399;
+    --err: #f87171;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  width: 360px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 'Segoe UI', 'Microsoft JhengHei', system-ui, sans-serif;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+header img {
+  width: 22px;
+  height: 22px;
+}
+header b {
+  font-size: 15px;
+}
+.st {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dim);
+}
+.st.ok {
+  color: var(--ok);
+}
+.st.err {
+  color: var(--err);
+}
+.st a {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+section {
+  padding: 10px 14px;
+}
+.h {
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+.list {
+  display: grid;
+  gap: 6px;
+  max-height: 300px;
+  overflow: auto;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.item .t {
+  flex: 1;
+  min-width: 0;
+}
+.item .l {
+  font-weight: 600;
+}
+.item .u {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item button {
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+.item button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.empty {
+  color: var(--dim);
+  text-align: center;
+  padding: 14px 0;
+}
+.opts {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 7px;
+}
+.opts label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.opts input {
+  accent-color: var(--accent);
+}

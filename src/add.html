@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'" />
+    <title>新增下載</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="add.css" />
+  </head>
+  <body>
+    <div class="add">
+      <div class="add-head">
+        <div id="kindIcon" class="kind big"></div>
+        <div class="grow">
+          <div id="headTitle" class="ht">新增下載</div>
+          <div id="headSub" class="hs dim">貼上網址、磁力連結</div>
+        </div>
+      </div>
+
+      <div class="add-body form">
+        <div class="field">
+          <label>網址</label>
+          <div class="inline">
+            <input id="url" class="inp" placeholder="https://… 或 magnet:?xt=…" spellcheck="false" />
+            <button id="analyze" class="btn">分析</button>
+          </div>
+        </div>
+
+        <div id="status" class="status hidden"></div>
+
+        <div id="info" class="hidden form">
+          <div id="facts" class="facts"></div>
+
+          <div id="hlsBox" class="field hidden">
+            <label>畫質</label>
+            <select id="variant" class="inp"></select>
+          </div>
+
+          <div id="torrentBox" class="field hidden">
+            <label class="inline" style="justify-content:space-between">
+              <span>要下載的檔案</span>
+              <span class="inline small">
+                <a id="selAll" class="lnk">全選</a><a id="selNone" class="lnk">全不選</a><a id="selVideo" class="lnk">只選影片</a>
+              </span>
+            </label>
+            <div id="files" class="tfiles"></div>
+          </div>
+
+          <div id="nameBox" class="field">
+            <label>檔名</label>
+            <input id="name" class="inp" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>儲存到</label>
+            <div class="inline"><input id="dir" class="inp" spellcheck="false" /><button id="dirBtn" class="btn">瀏覽…</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="add-foot">
+        <span id="footNote" class="dim small grow"></span>
+        <button id="cancel" class="btn">取消</button>
+        <button id="later" class="btn" disabled>稍後下載</button>
+        <button id="start" class="btn primary" disabled>開始下載</button>
+      </div>
+    </div>
+    <script src="icons.js"></script>
+    <script src="add.js"></script>
+  </body>
+</html>
