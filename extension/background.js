@@ -136,10 +136,25 @@ function labelOf(it) {
     const parts = ['HLS 串流']
     if (it.quality) parts.push(it.quality)
     if (it.duration) parts.push(fmtDur(it.duration))
-    return parts.join(' · ')
+    return parts.join(' · ') + (isShort(it) ? '（短片，可能是預告或廣告）' : '')
   }
   const type = (it.ext || (it.mime || '').split('/')[1] || 'video').toUpperCase().replace('X-', '')
   return [type, fmtBytes(it.size)].filter(Boolean).join(' · ')
+}
+
+/** 不到一分鐘的串流多半是預告、滑過縮圖的預覽或廣告 */
+function isShort(it) {
+  return it.kind === 'hls' && it.duration > 0 && it.duration < 60
+}
+
+/**
+ * 排序：影音網站整頁 → 長的串流（片長長的在前） → 直連檔（大的在前） → 短串流（預告 / 廣告）。
+ * 以前照偵測時間排，後載入的預告、廣告會排在正片前面
+ */
+function rank(it) {
+  if (it.page) return 0
+  if (it.kind === 'hls') return isShort(it) ? 3 : 1
+  return 2
 }
 
 /** 分頁上目前要顯示的項目：master 播放清單底下的子清單不重複列 */
@@ -149,8 +164,8 @@ function visibleItems(tabId) {
   const kids = new Set(t.children)
   return t.items
     .filter((it) => !it.drm && !(it.kind === 'hls' && !it.master && (kids.has(it.url) || kids.has(stripQuery(it.url)))))
-    .sort((a, b) => (b.page ? 1 : 0) - (a.page ? 1 : 0) || (b.master ? 1 : 0) - (a.master ? 1 : 0) || (b.size || 0) - (a.size || 0) || b.time - a.time)
-    .map((it) => ({ ...it, label: labelOf(it) }))
+    .sort((a, b) => rank(a) - rank(b) || (b.duration || 0) - (a.duration || 0) || (b.master ? 1 : 0) - (a.master ? 1 : 0) || (b.size || 0) - (a.size || 0) || b.time - a.time)
+    .map((it) => ({ ...it, label: labelOf(it), short: isShort(it) }))
 }
 
 function notifyTab(tabId) {
@@ -190,22 +205,43 @@ async function inspectHls(t, it) {
     if (lines.some((l) => l.startsWith('#EXT-X-STREAM-INF'))) {
       it.master = true
       let best = 0
+      let bestBw = -1
+      let topUrl = ''
       lines.forEach((l, i) => {
         if (l.startsWith('#EXT-X-STREAM-INF')) {
           const h = Number((/RESOLUTION=\d+x(\d+)/.exec(l) || [])[1] || 0)
+          const bw = Number((/BANDWIDTH=(\d+)/.exec(l) || [])[1] || 0)
           if (h > best) best = h
           const next = lines.slice(i + 1).find((x) => x && !x.startsWith('#'))
-          if (next) addChild(t, new URL(next, base).href)
+          if (next) {
+            const u = new URL(next, base).href
+            addChild(t, u)
+            if (bw > bestBw) {
+              bestBw = bw
+              topUrl = u
+            }
+          }
         }
         const media = /^#EXT-X-MEDIA:.*URI="([^"]+)"/.exec(l)
         if (media) addChild(t, new URL(media[1], base).href)
       })
       if (best) it.quality = '最高 ' + best + 'p'
+      // 再讀一層拿片長，才分得出正片和預告
+      if (topUrl) {
+        try {
+          const sub = await (await fetch(topUrl, { credentials: 'include' })).text()
+          it.duration = durationOf(sub)
+        } catch {}
+      }
     } else {
-      it.duration = lines.reduce((s, l) => s + (l.startsWith('#EXTINF:') ? parseFloat(l.slice(8)) || 0 : 0), 0)
+      it.duration = durationOf(text)
       if (lines.some((l) => /^#EXT-X-KEY:.*METHOD=(SAMPLE-AES|ISO-23001)/.test(l) || /^#EXT-X-KEY:.*URI="skd:/.test(l))) it.drm = true
     }
   } catch {}
+}
+
+function durationOf(text) {
+  return text.split(/\r?\n/).reduce((s, l) => s + (l.startsWith('#EXTINF:') ? parseFloat(l.slice(8)) || 0 : 0), 0)
 }
 
 function addChild(t, url) {

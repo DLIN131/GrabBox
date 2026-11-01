@@ -53,6 +53,7 @@
     .list.on { display: block; }
     .it { display: block; width: 100%; text-align: left; border: 0; background: none; color: #e6e8ee; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
     .it:hover { background: #263352; }
+    .it.short { opacity: .55; }
     .it small { display: block; color: #8d93a3; font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .toast { display: none; background: #1b1f29; color: #e6e8ee; border: 1px solid #2d3341; border-radius: 9px; padding: 8px 12px; font-size: 12.5px; box-shadow: 0 6px 20px rgba(0,0,0,.45); max-width: 320px; }
     .toast.on { display: block; }
@@ -218,7 +219,7 @@
   function toggleList() {
     if (list.classList.toggle('on')) {
       list.innerHTML = choices()
-        .map((it, i) => `<button class="it" data-i="${i}">${esc(it.label || it.url)}<small>${esc(it.url)}</small></button>`)
+        .map((it, i) => `<button class="it${it.short ? ' short' : ''}" data-i="${i}">${esc(it.label || it.url)}<small>${esc(it.url)}</small></button>`)
         .join('')
     }
   }

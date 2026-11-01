@@ -107,6 +107,8 @@ function show() {
     sel.innerHTML = info.variants.map((v, i) => `<option value="${i}">${esc(v.label)}${v.size ? '　約 ' + fmtBytes(v.size) : ''}${v.audioUrl ? '　（另有音軌）' : ''}</option>`).join('')
     if (info.duration) fact('片長', fmtDur(info.duration))
     if (info.segs) fact('片段', info.segs + ' 個')
+    if (info.adSeconds > 0) fact('已略過插播廣告', fmtDur(info.adSeconds))
+    if (info.duration && info.duration < 60) fact('', '只有 ' + fmtDur(info.duration) + '，可能是預告或廣告，請確認是不是選錯來源', true)
     if (info.encrypted) fact('', 'AES-128 加密（會自動解密）')
     if (info.live) fact('', '直播：只會下載目前已有的片段', true)
     if (!info.ffmpeg) fact('', '找不到 ffmpeg，會存成 .ts', true)
