@@ -19,6 +19,12 @@
 - **種子**：新增視窗取得資訊時，磁力連結會用 `deselect:true` 加進 client 拿 metadata、存成 `userData/torrents/<infoHash>.torrent` 後馬上移除；真正開始時從存檔加入，並把磁力連結的 `tr=`、`x.pe=` 補回去（否則會找不到節點）。暫停 = destroy（保留檔案），每 30 秒存 bitfield，下次啟動用 `opts.bitfield` 只抽查不全部重算。
 - **沒勾選的種子檔案**：會因邊界區塊被寫入而撐到接近原大小（內容幾乎是 0），種子停止（完成且不做種）時 `cleanupUnselected` 會刪掉。WebTorrent 的 `done` 事件要所有檔案完成才會觸發，所以完成判斷自己做（勾選的檔案都 done）。
 
+## 發布
+
+- Repo：github.com/DLIN131/GrabBox（公開）。推到 `main` 會跑 `.github/workflows/release.yml`：Node 22、`npm ci`、版本設成 `1.0.<run_number>`（package.json 和 extension/manifest.json 都改）、`node pack.js`、壓成 `GrabBox-Windows.zip` 發布到 Releases。
+- 只改 `.md` 不會觸發發布。
+- 固定下載網址：https://github.com/DLIN131/GrabBox/releases/latest/download/GrabBox-Windows.zip
+
 ## 測試
 
 測試腳本不在專案裡（放在 scratchpad），做法：
