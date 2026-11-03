@@ -11,6 +11,10 @@
       <b>GrabBox</b>
       <span id="st" class="st">檢查中…</span>
     </header>
+    <label class="toggle">
+      <span class="tl"><b>影片上的下載按鈕</b><small id="overlaySt"></small></span>
+      <span class="sw"><input type="checkbox" id="overlay" /></span>
+    </label>
     <div id="hint" class="hint" style="display: none"></div>
     <section>
       <div class="h">這個頁面偵測到的影片</div>
@@ -18,7 +22,6 @@
       <div id="empty" class="empty">還沒偵測到影片。<br />播放影片後就會出現在這裡。</div>
     </section>
     <section class="opts">
-      <label><input type="checkbox" id="overlay" />在影片上顯示「下載此影片」按鈕</label>
       <label><input type="checkbox" id="magnet" />磁力連結、.torrent 連結交給 GrabBox</label>
       <label><input type="checkbox" id="takeover" />接管瀏覽器下載（壓縮檔、影片、安裝檔等）</label>
     </section>

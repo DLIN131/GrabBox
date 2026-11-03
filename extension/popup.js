@@ -67,6 +67,15 @@ function render(items) {
   for (const k of ['overlay', 'magnet', 'takeover']) {
     const el = $('#' + k)
     el.checked = !!r?.settings?.[k]
-    el.onchange = () => chrome.storage.local.set({ [k]: el.checked })
+    el.onchange = () => {
+      chrome.storage.local.set({ [k]: el.checked })
+      if (k === 'overlay') overlayText()
+    }
   }
+  overlayText()
 })()
+
+/** 開關旁邊的說明：已開啟的分頁也會馬上跟著顯示 / 隱藏 */
+function overlayText() {
+  $('#overlaySt').textContent = $('#overlay').checked ? '開啟：滑鼠移到影片上會出現「下載此影片」' : '關閉：影片上不顯示按鈕（這裡的清單照樣可以下載）'
+}
